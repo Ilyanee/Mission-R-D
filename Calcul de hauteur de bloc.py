@@ -9,16 +9,16 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-def extraire_temps(col_str):
+def extraire_temps(col_str): #ajt extraction timestamp eventuellement en les ignorant à la lecture
     """
     Extrait le temps en millisecondes à partir du premier élément
     de la chaîne (avant la première virgule).
     Exemple : "0,1,0:0" -> retourne 0.
     """
     try:
-        return int(col_str.split(',')[0])
+        return np.array(int(col_str.split(';')[0]), int(col_str.split(',')[0]))
     except Exception:
-        return np.nan
+        return np.zero
 
 def extraire_info_joueur(champ):
     """
