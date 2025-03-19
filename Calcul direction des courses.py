@@ -16,10 +16,8 @@ def extraire_temps(col_str):
     de la chaîne (avant la première virgule).
     Exemple : "0,1,0:0" -> retourne 0.
     """
-    try:
-        return int(col_str.split(',')[0])
-    except Exception:
-        return np.nan
+    return int(col_str.split(',')[0])
+
 
 def extraire_info_joueur(champ):
     """
@@ -28,17 +26,15 @@ def extraire_info_joueur(champ):
     Retourne un tuple (team, id, x)
     Exemple : "0,540100,9,52.607,33.316" -> ("0", "540100", 52.607)
     """
-    try:
-        parts = champ.split(',')
-        if len(parts) >= 5:
-            team = parts[0].strip()
-            player_id = parts[1].strip()
-            x = float(parts[3])
-            return team, player_id, x
-        else:
-            return None, None, np.nan
-    except Exception:
+    parts = champ.split(',')
+    if len(parts) >= 5:
+        team = parts[0].strip()
+        player_id = parts[1].strip()
+        x = float(parts[3])
+        return team, player_id, x
+    else:
         return None, None, np.nan
+
 
 def lire_donnees(fichier, equipe_cible="0"):
     """
