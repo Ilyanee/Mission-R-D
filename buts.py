@@ -5,3 +5,13 @@ Dictionnaires  but_i <-> [minute, seconde, id_buteur]
 buts_rcl_mhsc = { "but_1": [15, 4, 154048], "but_2": [25, 11, 106821], "but_3" : [35, 23, 186796], "but_4" : [49, 55, 59325], "but_5" : [68, 10, 167443] }
 buts_mhsc_metz = { "but_1": [23, 50, 98826], "but_2": [69, 46, 442793], "but_3" : [79, 3, 78275], "but_4" : [90, 50, 477724] }
 buts_rcsa_mhsc = { "but_1": [35, 15, 167443], "but_2": [45, 36, 73965], "but_3" : [48, 51, 167443], "but_4" : [68, 32, 168539], "but_5" : [94, 38, 433640] }
+
+
+def convertir_temps(buts):
+"""
+Conversion en timestamps des timers de buts
+"""
+timers_buts = []
+for but in buts :
+  timers_buts.append((but[0]*60+but[1])*1000)
+  return timers_buts
