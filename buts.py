@@ -15,3 +15,12 @@ def convertir_temps(buts):
     for value in buts.values() :
         timers_buts.append((value[0]*60+value[1])*1000)
     return timers_buts
+
+def convertir_temps(buts):
+    """
+    Conversion en minutes
+    """
+    timers_buts = []
+    for value in buts.values() :
+        timers_buts.append(value[0]+1)
+    return timers_buts
