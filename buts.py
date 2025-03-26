@@ -9,7 +9,7 @@ buts_rcsa_mhsc = { "but_1": [35, 15, 167443], "but_2": [45, 36, 73965], "but_3" 
 
 def convertir_temps(buts):
     """
-    Conversion en timestamps des timers de buts
+    Conversion en ms des timers de buts
     """
     timers_buts = []
     for value in buts.values() :
