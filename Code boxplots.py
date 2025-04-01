@@ -1,98 +1,87 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Mar 31 15:36:22 2025
-
-@author: Luis
-"""
-
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-
-def parse_score_code(score_str):
-    """
-    Convertit un code de score sur 2 chiffres en label "A-B".
-    Exemple : "10" -> "1-0".
-    """
-    score_str = score_str.strip()
-    if len(score_str) == 2 and score_str.isdigit():
-        return f"{score_str[0]}-{score_str[1]}"
-    return score_str
+import sys
 
 def lire_fichier_scores(fichier_txt):
-    """
-    Lit un fichier texte contenant des lignes du type :
-      temps_min;score_code
-    Exemple : "15.1245;10" signifie qu'à 15.1245 minutes, le score devient 1-0.
-    Retourne un DataFrame trié avec les colonnes : score_time, score_code et score_label.
-    """
-    df = pd.read_csv(fichier_txt, sep=';', header=None, names=['score_time', 'score_code'])
-    df['score_time'] = pd.to_numeric(df['score_time'], errors='coerce')
-    df['score_label'] = df['score_code'].apply(parse_score_code)
-    df = df.sort_values('score_time').reset_index(drop=True)
-    return df
+    """Lit un fichier texte contenant des lignes de score et retourne un DataFrame trié."""
+    try:
+        df = pd.read_csv(fichier_txt, sep=';', header=None, names=['score_time', 'score_label'], dtype={'score_label': str})
+        df['score_time'] = pd.to_numeric(df['score_time'], errors='coerce')
+        df = df.sort_values('score_time').reset_index(drop=True)
+        return df
+    except Exception as e:
+        print(f"Erreur lors de la lecture du fichier des scores ({fichier_txt}) : {e}")
+        sys.exit(1)
 
 def associer_score(df_data, df_score):
-    """
-    Associe à chaque ligne de df_data (basé sur 'temps_min') le score courant,
-    en utilisant merge_asof (join temporel backward).
-    """
-    df_data = df_data.sort_values('temps_min').reset_index(drop=True)
-    df_score = df_score.sort_values('score_time').reset_index(drop=True)
-    df_merged = pd.merge_asof(
-        df_data, 
-        df_score, 
-        left_on='temps_min', 
-        right_on='score_time', 
-        direction='backward'
-    )
-    return df_merged
+    """Associe à chaque ligne du DataFrame df_data le score courant (score connu avant cet événement)."""
+    try:
+        df_data = df_data.sort_values('temps_min').reset_index(drop=True)
+        df_score = df_score.sort_values('score_time').reset_index(drop=True)
 
-def tracer_boxplots(df, param_cols, group_col='score_label'):
-    """
-    Trace des boxplots pour les colonnes indiquées dans param_cols,
-    groupées par la colonne group_col.
-    """
+        df_data['temps_min'] = df_data['temps_min'].astype(float)
+        df_score['score_time'] = df_score['score_time'].astype(float)
+
+        # Associer chaque événement au dernier score connu (avant l'événement)
+        df_merged = pd.merge_asof(df_data, df_score, left_on='temps_min', right_on='score_time', direction='backward')
+        return df_merged
+    except Exception as e:
+        print(f"Erreur lors de l'association des scores aux données : {e}")
+        sys.exit(1)
+
+def tracer_boxplots(df, param_cols, group_col='score_label', output_prefix='boxplot'):
+    """Trace et sauvegarde des boxplots pour les colonnes numériques."""
     for param in param_cols:
-        plt.figure(figsize=(8, 5))
-        groups = []
-        labels = []
-        for score, group in df.groupby(group_col):
-            s = group[param].dropna()
-            groups.append(s)
-            labels.append(score)
-        plt.boxplot(groups, labels=labels)
-        plt.xlabel("Score")
-        plt.ylabel(param)
-        plt.title(f"Boxplot de {param} par score")
-        plt.tight_layout()
-        plt.show()
+        try:
+            plt.figure(figsize=(8, 5))
+            groups = [group[param].dropna() for _, group in df.groupby(group_col) if not group[param].dropna().empty]
+            labels = [score for score, group in df.groupby(group_col) if not group[param].dropna().empty]
 
-# ---------------------------
-# Exécution directe du script
-# ---------------------------
+            if groups:
+                plt.boxplot(groups, labels=labels)
+                plt.xlabel("Score")
+                plt.ylabel(param)
+                plt.title(f"Boxplot de {param} par score")
+                plt.tight_layout()
+                output_file = f"{output_prefix}_{param}.png"
+                plt.savefig(output_file)
+                plt.close()
+                print(f"Boxplot généré et sauvegardé : {output_file}")
+            else:
+                print(f"Aucune donnée pour le paramètre {param}, boxplot non généré.")
+        except Exception as e:
+            print(f"Erreur lors de la génération du boxplot pour {param} : {e}")
 
-# Remplacez les chemins ci-dessous par vos chemins réels
-fichier_csv_calcul = r"C:\Users\Luis\Documents\Fichiers matchs\L1 J1 MHSC OM hauteur_bloc.csv"  # Fichier CSV issu du calcul de hauteur de bloc
-fichier_txt_scores = r"C:\Users\Luis\Documents\Fichiers matchs\scores.txt"  # Fichier TXT contenant les scores
-fichier_export = r"C:\Users\Luis\Documents\Fichiers matchs\boxplots.csv"  # Fichier CSV de sortie pour le DataFrame fusionné
+if __name__ == '__main__':
+    if len(sys.argv) != 4:
+        print("Utilisation : python CodeBoxplots.py <fichier_csv_calcul> <fichier_txt_scores> <output_prefix>")
+        sys.exit(1)
+    
+    fichier_csv_calcul, fichier_txt_scores, output_prefix = sys.argv[1], sys.argv[2], sys.argv[3]
 
-# Lecture du fichier CSV de hauteur de bloc
-df_data = pd.read_csv(fichier_csv_calcul, sep=';', encoding='utf-8')
-# On suppose que df_data contient une colonne "temps_min" et des colonnes comme "Equipe 0", "Equipe 1", etc.
+    # Lecture du fichier CSV des calculs
+    try:
+        df_data = pd.read_csv(fichier_csv_calcul, sep=';', encoding='utf-8')
+    except Exception as e:
+        print(f"Erreur lors de la lecture du fichier CSV ({fichier_csv_calcul}) : {e}")
+        sys.exit(1)
+    
+    # Lecture des scores
+    df_score = lire_fichier_scores(fichier_txt_scores)
 
-# Lecture du fichier de scores
-df_score = lire_fichier_scores(fichier_txt_scores)
+    # Association des scores aux données
+    df_merged = associer_score(df_data, df_score)
 
-# Association du score à chaque instant
-df_merged = associer_score(df_data, df_score)
+    # Sauvegarde du DataFrame fusionné
+    try:
+        merged_csv_file = f"{output_prefix}_merged.csv"
+        df_merged.to_csv(merged_csv_file, sep=';', index=False, encoding='utf-8')
+        print(f"DataFrame fusionné sauvegardé dans {merged_csv_file}")
+    except Exception as e:
+        print(f"Erreur lors de la sauvegarde du DataFrame fusionné : {e}")
 
-# Exportation du DataFrame fusionné dans un fichier CSV
-df_merged.to_csv(fichier_export, sep=';', index=False, encoding='utf-8')
-print(f"Le DataFrame fusionné a été exporté dans {fichier_export}")
-
-# Définition des colonnes à tracer (toutes sauf celles utilisées pour le merge)
-param_cols = [col for col in df_merged.columns if col not in ['temps_min', 'score_time', 'score_code', 'score_label']]
-
-# Tracé des boxplots groupés par score
-tracer_boxplots(df_merged, param_cols, group_col='score_label')
+    # Sélection des colonnes numériques pour les boxplots
+    param_cols = [col for col in df_merged.columns if col not in ['temps_min', 'score_time', 'score_label']]
+    
+    # Génération des boxplots
+    tracer_boxplots(df_merged, param_cols, group_col='score_label', output_prefix=output_prefix)
