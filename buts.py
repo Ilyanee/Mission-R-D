@@ -70,7 +70,7 @@ def generer_fichier_buts(buts, output_filename):
         else:
             score_equipe1 += 1
         # Format de la ligne : temps_arrondi ; score_equipe0 : score_equipe1
-        lignes.append(f"{temps_arrondi};{score_equipe0}{score_equipe1}")
+        lignes.append(f"{minute}.{seconde/60};{score_equipe0}{score_equipe1}")
     
     # Écriture dans le fichier de sortie
     with open(output_filename, "w", encoding="utf-8") as f:
