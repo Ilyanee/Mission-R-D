@@ -6,69 +6,86 @@ def conv_float(s):
     """Convertit une chaîne avec une virgule en décimal."""
     return float(s.replace(',', '.'))
 
-def lire_donnees_porteur(fichier_porteur="output.txt"):
-    """
-    Lit le fichier converti contenant les informations du porteur.
-    Chaque ligne doit avoir le format :
-       porteur_team;porteur_x;porteur_y;temps_min
-    Retourne une liste de tuples (temps_min, porteur_team, porteur_x, porteur_y).
-    """
-    donnees = []
-    with open(fichier_porteur, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f, delimiter=';')
-        for row in reader:
-            try:
-                team = int(row["porteur_team"])
-                x = float(row["porteur_x"])
-                y = float(row["porteur_y"])
-                temps_min = float(row["temps_min"])
-                donnees.append((temps_min, team, x, y))
-            except ValueError:
-                continue
-    donnees.sort(key=lambda rec: rec[0])
-    return donnees
-
 def distance(x1, y1, x2, y2):
     """Calcule la distance euclidienne entre deux points."""
     return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
+def calcul_porteur(row):
+    """
+    Calcule le porteur de balle pour une ligne du fichier match.
+    On utilise le dernier champ (ball) pour extraire la position du ballon,
+    puis on parcourt les segments joueurs (colonnes 2 à avant-dernier) afin
+    de déterminer le joueur le plus proche du ballon.
+    
+    Retourne un tuple (porteur_team, porteur_x, porteur_y) ou None si non trouvé.
+    """
+    # Extraction de la position du ballon depuis le dernier champ
+    ball_field = row[-1]
+    ball_parts = ball_field.split(',')
+    if len(ball_parts) < 2:
+        return None
+    try:
+        ball_x = conv_float(ball_parts[0])
+        ball_y = conv_float(ball_parts[1])
+    except ValueError:
+        return None
+
+    min_dist = float('inf')
+    porteur = None
+
+    # Parcours des segments joueurs (colonnes 2 à avant-dernier)
+    for p in row[2:-1]:
+        p = p.strip()
+        if not p:
+            continue
+        parts = p.split(',')
+        if len(parts) < 5:
+            continue
+        try:
+            team = int(parts[0])
+            x = conv_float(parts[3])
+            y = conv_float(parts[4])
+        except ValueError:
+            continue
+        d = distance(x, y, ball_x, ball_y)
+        if d < min_dist:
+            min_dist = d
+            porteur = (team, x, y)
+    return porteur
+
 def calculer_distance_defenseur(match_filename):
     """
     Pour chaque instant du match (fichier complet avec toutes les positions des joueurs),
-    lit automatiquement les informations du porteur (à partir de "output.txt") et détermine :
-      - Parmi les joueurs de l’équipe adverse, quel est le défenseur le plus proche du porteur,
-      - La distance correspondante.
+    détermine :
+      - Le porteur de balle en calculant, pour la ligne courante, le joueur le plus proche du ballon.
+      - Parmi les joueurs de l’équipe adverse, le défenseur le plus proche du porteur.
+      - La distance correspondante entre le porteur et ce défenseur.
     
-    Le fichier complet doit avoir pour chaque ligne le format suivant :
-      timestamp;periode;player_1;player_2;...;player_22;ball
-    Chaque segment joueur est au format "team,?, ?, x, y".
-    
-    On suppose que les enregistrements du fichier complet et du fichier converti (output.txt)
-    sont alignés (même ordre).
+    Le fichier complet doit avoir pour chaque ligne le format :
+       timestamp;periode;player_1;player_2;...;player_22;ball
+    Chaque segment joueur est au format "team,ID,numero,x,y".
     
     Retourne une liste de tuples :
       (temps_min, porteur_team, porteur_x, porteur_y,
        defenseur_team, defenseur_x, defenseur_y, distance)
     """
-    # Récupération automatique des informations sur le porteur
-    porteur_data = lire_donnees_porteur()
     resultats = []
     ref_timestamp = None
-    porteur_index = 0  # index pour accéder aux enregistrements du porteur
 
     with open(match_filename, "r", encoding="utf-8") as f:
         reader = csv.reader(f, delimiter=';')
+        # Tenter d'ignorer un éventuel header
         header = next(reader, None)
         if header and not header[0].isdigit():
-            # Header détecté, on continue la lecture
             pass
         else:
             f.seek(0)
             reader = csv.reader(f, delimiter=';')
-
+        
         for row in reader:
             if not row:
                 continue
+            # Conversion du timestamp (premier champ) en minutes
             try:
                 ts = int(row[0])
             except ValueError:
@@ -77,14 +94,13 @@ def calculer_distance_defenseur(match_filename):
                 ref_timestamp = ts
             temps_min = (ts - ref_timestamp) / (60 * 1e9)  # conversion nanosecondes -> minutes
 
-            if porteur_index >= len(porteur_data):
-                break
-            # On récupère l'enregistrement correspondant dans les données du porteur
-            porteur_rec = porteur_data[porteur_index]
-            porteur_index += 1
-            _, porteur_team, porteur_x, porteur_y = porteur_rec
+            # Calcul du porteur de balle pour la ligne actuelle
+            porteur = calcul_porteur(row)
+            if porteur is None:
+                continue
+            porteur_team, porteur_x, porteur_y = porteur
 
-            # Extraction des joueurs à partir du 3ème champ jusqu'à l'avant-dernier (le dernier étant le ballon)
+            # Extraction des joueurs pour le calcul du défenseur
             joueurs = []
             for p in row[2:-1]:
                 p = p.strip()
@@ -103,7 +119,8 @@ def calculer_distance_defenseur(match_filename):
             if not joueurs:
                 continue
 
-            # Recherche du défenseur le plus proche parmi les joueurs de l'équipe adverse
+            # Recherche du défenseur : parmi les joueurs de l'équipe opposée, on prend celui
+            # le plus proche du porteur
             min_dist_def = float('inf')
             defenseur = None
             for joueur in joueurs:
@@ -123,9 +140,11 @@ def calculer_distance_defenseur(match_filename):
     return resultats
 
 def main():
-    # Fichier complet des positions des joueurs
-    fichier_match = "match.txt"
-    resultats = calculer_distance_defenseur(fichier_match)
+    # Nom du fichier complet du match
+    match_filename = "match.txt"
+    
+    resultats = calculer_distance_defenseur(match_filename)
+    
     print("Défenseur le plus proche pour chaque instant :")
     for res in resultats:
         (temps_min, porteur_team, porteur_x, porteur_y,
