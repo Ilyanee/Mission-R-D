@@ -69,39 +69,45 @@ def calculer_distance_defenseur(fichier_entree):
     Lit le fichier CSV issu de Code traitement (avec en-tête) et, pour chaque instant,
     détermine le porteur de balle et, parmi les joueurs adverses, le défenseur le plus proche du porteur.
     Le timestamp est en millisecondes et est converti en minutes (en utilisant le premier timestamp comme référence).
-    
-    Retourne un DataFrame avec les colonnes :
+
+    Retourne 2 DataFrames :
+      - df_team1 : pour les instants où le porteur appartient à l'équipe 1
+      - df_team2 : pour les instants où le porteur appartient à l'équipe 2
+    Chaque DataFrame comporte les colonnes :
       temps_min, porteur_team, porteur_x, porteur_y, defenseur_team, defenseur_x, defenseur_y, distance
     """
-    # Forcer la lecture de toutes les colonnes comme chaînes pour éviter les conversions automatiques
+    # Lecture du CSV en forçant toutes les colonnes en chaînes de caractères
     df = pd.read_csv(fichier_entree, delimiter=';', encoding='utf-8', dtype=str)
     if df.empty:
         print("Aucune donnée dans le fichier d'entrée.")
         sys.exit(1)
-    
-    # Convertir la colonne 'timestamp' en float (timestamp en millisecondes)
+
+    # Conversion de la colonne 'timestamp' en numérique
     try:
         df["timestamp"] = pd.to_numeric(df["timestamp"], errors='coerce')
     except Exception as e:
         print("Erreur lors de la conversion de 'timestamp':", e)
         sys.exit(1)
-    
+
     # Utiliser le premier timestamp comme référence et convertir en minutes
     ref_timestamp = df["timestamp"].iloc[0]
+
+    result_team1 = []
+    result_team2 = []
     
-    resultats = []
     for _, row in df.iterrows():
         try:
             ts = float(row["timestamp"])
         except Exception:
             continue
-        temps_min = (ts - ref_timestamp) / (60 * 1000)  # Conversion millisecondes -> minutes
+        temps_min = (ts - ref_timestamp) / (60 * 1000)  # Conversion de millisecondes en minutes
+        
         porteur = calcul_porteur(row)
         if porteur is None:
             continue
         porteur_team, porteur_x, porteur_y = porteur
-        
-        # Extraction des positions des joueurs (player_1 à player_22)
+
+        # Extraction des positions de tous les joueurs
         joueurs = []
         for i in range(1, TOTAL_PLAYERS+1):
             champ = row.get(f"player_{i}", "")
@@ -122,12 +128,13 @@ def calculer_distance_defenseur(fichier_entree):
             joueurs.append((team, x, y))
         if not joueurs:
             continue
-        
+
         # Recherche du défenseur le plus proche parmi les joueurs adverses
         min_dist_def = float('inf')
         defenseur = None
         for joueur in joueurs:
             team, x, y = joueur
+            # On ne considère que les joueurs adverses
             if team == porteur_team:
                 continue
             d = distance(porteur_x, porteur_y, x, y)
@@ -137,13 +144,23 @@ def calculer_distance_defenseur(fichier_entree):
         if defenseur is None:
             continue
         defenseur_team, defenseur_x, defenseur_y = defenseur
+
+        ligne = (temps_min, porteur_team, porteur_x, porteur_y,
+                 defenseur_team, defenseur_x, defenseur_y, min_dist_def)
         
-        resultats.append((temps_min, porteur_team, porteur_x, porteur_y,
-                           defenseur_team, defenseur_x, defenseur_y, min_dist_def))
-    
-    df_result = pd.DataFrame(resultats, columns=["temps_min", "porteur_team", "porteur_x", "porteur_y",
-                                                 "defenseur_team", "defenseur_x", "defenseur_y", "distance"])
-    return df_result
+        # Ajout de la ligne dans le DataFrame correspondant à l'équipe en possession
+        if porteur_team == 1:
+            result_team1.append(ligne)
+        elif porteur_team == 2:
+            result_team2.append(ligne)
+        # Si d'autres numéros d'équipe sont présents, on peut les gérer ici au besoin
+
+    df_team1 = pd.DataFrame(result_team1, columns=["temps_min", "porteur_team", "porteur_x", "porteur_y",
+                                                    "defenseur_team", "defenseur_x", "defenseur_y", "distance"])
+    df_team2 = pd.DataFrame(result_team2, columns=["temps_min", "porteur_team", "porteur_x", "porteur_y",
+                                                    "defenseur_team", "defenseur_x", "defenseur_y", "distance"])
+    return df_team1, df_team2
+
 
 def exporter_et_tracer(df_result, csv_export, png_export):
     """
