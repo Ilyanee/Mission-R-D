@@ -40,10 +40,8 @@ def calcul_porteur(row):
 
     min_dist = float('inf')
     porteur = None
-
     for i in range(1, TOTAL_PLAYERS+1):
         champ = row.get(f"player_{i}", "")
-        # Forcer la conversion en chaîne si nécessaire
         if not isinstance(champ, str):
             champ = str(champ)
         champ = champ.strip()
@@ -68,46 +66,46 @@ def calculer_distance_defenseur(fichier_entree):
     """
     Lit le fichier CSV issu de Code traitement (avec en-tête) et, pour chaque instant,
     détermine le porteur de balle et, parmi les joueurs adverses, le défenseur le plus proche du porteur.
+    
     Le timestamp est en millisecondes et est converti en minutes (en utilisant le premier timestamp comme référence).
-
-    Retourne 2 DataFrames :
-      - df_team1 : pour les instants où le porteur appartient à l'équipe 1
-      - df_team2 : pour les instants où le porteur appartient à l'équipe 2
-    Chaque DataFrame comporte les colonnes :
-      temps_min, porteur_team, porteur_x, porteur_y, defenseur_team, defenseur_x, defenseur_y, distance
+    
+    Retourne un DataFrame avec les colonnes :
+      temps_min, distance_team1, distance_team2
+      
+    Pour chaque ligne :
+      - Si le porteur appartient à l'équipe 1, alors distance_team1 = 0 et distance_team2 = distance (défenseur le plus proche parmi l'équipe 2).
+      - Si le porteur appartient à l'équipe 2, alors distance_team2 = 0 et distance_team1 = distance (défenseur le plus proche parmi l'équipe 1).
     """
-    # Lecture du CSV en forçant toutes les colonnes en chaînes de caractères
+    # Lire le CSV en forçant toutes les colonnes en chaînes
     df = pd.read_csv(fichier_entree, delimiter=';', encoding='utf-8', dtype=str)
     if df.empty:
         print("Aucune donnée dans le fichier d'entrée.")
         sys.exit(1)
-
-    # Conversion de la colonne 'timestamp' en numérique
     try:
         df["timestamp"] = pd.to_numeric(df["timestamp"], errors='coerce')
     except Exception as e:
         print("Erreur lors de la conversion de 'timestamp':", e)
         sys.exit(1)
-
-    # Utiliser le premier timestamp comme référence et convertir en minutes
+    
+    # Utiliser le premier timestamp comme référence et convertir en minutes (timestamp en millisecondes)
     ref_timestamp = df["timestamp"].iloc[0]
-
-    result_team1 = []
-    result_team2 = []
+    
+    # Liste des résultats
+    resultats = []
     
     for _, row in df.iterrows():
         try:
             ts = float(row["timestamp"])
         except Exception:
             continue
-        temps_min = (ts - ref_timestamp) / (60 * 1000)  # Conversion de millisecondes en minutes
+        temps_min = (ts - ref_timestamp) / (60 * 1000)  # Conversion millisecondes -> minutes
         
         porteur = calcul_porteur(row)
         if porteur is None:
             continue
         porteur_team, porteur_x, porteur_y = porteur
-
-        # Extraction des positions de tous les joueurs
+        
+        # Extraction des joueurs (player_1 à player_22)
         joueurs = []
         for i in range(1, TOTAL_PLAYERS+1):
             champ = row.get(f"player_{i}", "")
@@ -128,53 +126,51 @@ def calculer_distance_defenseur(fichier_entree):
             joueurs.append((team, x, y))
         if not joueurs:
             continue
-
+        
         # Recherche du défenseur le plus proche parmi les joueurs adverses
         min_dist_def = float('inf')
-        defenseur = None
         for joueur in joueurs:
             team, x, y = joueur
-            # On ne considère que les joueurs adverses
+            # Ne considérer que les joueurs de l'équipe adverse
             if team == porteur_team:
                 continue
             d = distance(porteur_x, porteur_y, x, y)
             if d < min_dist_def:
                 min_dist_def = d
-                defenseur = joueur
-        if defenseur is None:
-            continue
-        defenseur_team, defenseur_x, defenseur_y = defenseur
-
-        ligne = (temps_min, porteur_team, porteur_x, porteur_y,
-                 defenseur_team, defenseur_x, defenseur_y, min_dist_def)
         
-        # Ajout de la ligne dans le DataFrame correspondant à l'équipe en possession
+        # Création d'une ligne avec deux colonnes de distance :
+        # - distance_team1 : distance si le porteur est de l'équipe 2, sinon 0
+        # - distance_team2 : distance si le porteur est de l'équipe 1, sinon 0
         if porteur_team == 1:
-            result_team1.append(ligne)
+            distance_team1 = 0.0
+            distance_team2 = min_dist_def
         elif porteur_team == 2:
-            result_team2.append(ligne)
-        # Si d'autres numéros d'équipe sont présents, on peut les gérer ici au besoin
-
-    df_team1 = pd.DataFrame(result_team1, columns=["temps_min", "porteur_team", "porteur_x", "porteur_y",
-                                                    "defenseur_team", "defenseur_x", "defenseur_y", "distance"])
-    df_team2 = pd.DataFrame(result_team2, columns=["temps_min", "porteur_team", "porteur_x", "porteur_y",
-                                                    "defenseur_team", "defenseur_x", "defenseur_y", "distance"])
-    return df_team1, df_team2
-
+            distance_team1 = min_dist_def
+            distance_team2 = 0.0
+        else:
+            # Si le porteur appartient à une autre équipe, on peut ignorer la ligne
+            continue
+        
+        resultats.append((temps_min, distance_team1, distance_team2))
+    
+    df_result = pd.DataFrame(resultats, columns=["temps_min", "distance_team1", "distance_team2"])
+    return df_result
 
 def exporter_et_tracer(df_result, csv_export, png_export):
     """
-    Exporte le DataFrame df_result dans un fichier CSV et trace un graphique PNG de l'évolution
-    de la distance entre le porteur et le défenseur le plus proche.
+    Exporte le DataFrame df_result dans un fichier CSV et trace un graphique PNG
+    de l'évolution de la distance (pour les deux équipes) en fonction du temps.
     """
     df_result.to_csv(csv_export, sep=';', index=False, encoding='utf-8')
     print(f"Résultats exportés dans {csv_export}")
     
     plt.figure(figsize=(10, 6))
-    plt.plot(df_result["temps_min"], df_result["distance"], marker='o', linestyle='-', color='b')
+    plt.plot(df_result["temps_min"], df_result["distance_team1"], marker='o', linestyle='-', color='r', label="Distance équipe 1")
+    plt.plot(df_result["temps_min"], df_result["distance_team2"], marker='o', linestyle='-', color='b', label="Distance équipe 2")
     plt.xlabel("Temps (min)")
     plt.ylabel("Distance (m)")
-    plt.title("Distance entre porteur et défenseur le plus proche")
+    plt.title("Distance du défenseur le plus proche (par équipe)")
+    plt.legend()
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(png_export, dpi=300)
@@ -187,7 +183,7 @@ def main():
         sys.exit(1)
     
     fichier_entree = sys.argv[1]  # Fichier CSV issu de Code traitement
-    fichier_export = sys.argv[2]  # Fichier CSV de sortie (par exemple, défenseur_le_plus_proche.csv)
+    fichier_export = sys.argv[2]  # Chemin pour le fichier CSV de sortie (par exemple, défenseur_le_plus_proche.csv)
     png_export = os.path.splitext(fichier_export)[0] + ".png"
     
     df_result = calculer_distance_defenseur(fichier_entree)
