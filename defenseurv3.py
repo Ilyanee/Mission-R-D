@@ -73,8 +73,8 @@ def calculer_distance_defenseur(fichier_entree):
       temps_min, distance_team1, distance_team2
       
     Pour chaque ligne :
-      - Si le porteur appartient à l'équipe 1, alors distance_team1 = 0 et distance_team2 = distance (défenseur le plus proche parmi l'équipe 2).
-      - Si le porteur appartient à l'équipe 2, alors distance_team2 = 0 et distance_team1 = distance (défenseur le plus proche parmi l'équipe 1).
+      - Si le porteur appartient à l'équipe 1, alors distance_team1 = NaN et distance_team2 = distance (défenseur le plus proche parmi l'équipe 2).
+      - Si le porteur appartient à l'équipe 2, alors distance_team2 = NaN et distance_team1 = distance (défenseur le plus proche parmi l'équipe 1).
     """
     # Lire le CSV en forçant toutes les colonnes en chaînes
     df = pd.read_csv(fichier_entree, delimiter=';', encoding='utf-8', dtype=str)
@@ -138,17 +138,15 @@ def calculer_distance_defenseur(fichier_entree):
             if d < min_dist_def:
                 min_dist_def = d
         
-        # Création d'une ligne avec deux colonnes de distance :
-        # - distance_team1 : distance si le porteur est de l'équipe 2, sinon 0
-        # - distance_team2 : distance si le porteur est de l'équipe 1, sinon 0
+        # Affectation des distances selon l'équipe en possession:
+        # On utilise float('nan') pour indiquer NaN.
         if porteur_team == 1:
-            distance_team1 = 0.0
+            distance_team1 = float('nan')
             distance_team2 = min_dist_def
         elif porteur_team == 2:
             distance_team1 = min_dist_def
-            distance_team2 = 0.0
+            distance_team2 = float('nan')
         else:
-            # Si le porteur appartient à une autre équipe, on peut ignorer la ligne
             continue
         
         resultats.append((temps_min, distance_team1, distance_team2))
